@@ -45,12 +45,12 @@ def parse_fkb(path: pathlib.Path) -> tuple[tuple[int, ...], list[str], list[np.n
     Args:
         path: the ``.txt`` file to read.
 
-    Returns
+    Returns:
     -------
         ``(layer_sizes, activations, kernels, biases)``, with each kernel in
         Keras ``(n_in, n_out)`` orientation so that ``y = x @ kernel + bias``.
 
-    Raises
+    Raises:
     ------
         ValueError: if the header, element counts or parameter total disagree
             with the parsed architecture.

@@ -81,7 +81,7 @@ def mass_efficiency(
         nrad: quadrature points; exposed only so convergence can be tested.
         intfrac: fraction of the distribution integrated over.
 
-    Returns
+    Returns:
     -------
         ``(ke_rho, ks_rho, g)`` with the first two in 1/m.
     """

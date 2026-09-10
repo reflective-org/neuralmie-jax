@@ -52,8 +52,11 @@ src = ["src", "tools"]
 extend-select = ["D", "I", "UP", "B", "NPY", "RUF"]
 ignore = ["D100", "D104", "D203", "D213", "D205", "D400", "D415", "D417"]
 
+# Google, matching the downstream consumer's ruff config: the emulator module
+# is vendored verbatim into jax-gcm, so its docstrings must satisfy that
+# repo's lint as well as this one.
 [tool.ruff.lint.pydocstyle]
-convention = "numpy"
+convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
 "*_test.py" = ["D101", "D102", "D103", "SLF001"]

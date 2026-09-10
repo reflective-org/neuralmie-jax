@@ -134,14 +134,15 @@ def load_mlp_weights(path, *, expect_layers=None, dtype=jnp.float32) -> MLPWeigh
         expect_layers: if given, the layer sizes the file must declare.
         dtype: dtype to cast parameters to.
 
-    Returns
+    Returns:
     -------
         The loaded :class:`MLPWeights`.
 
-    Raises
+    Raises:
     ------
         ValueError: if the declared architecture, per-layer shapes or
             activation names are not what this module can evaluate.
+
     """
     with np.load(path, allow_pickle=False) as npz:
         layer_sizes = tuple(int(v) for v in npz["layer_sizes"])
@@ -364,12 +365,12 @@ def sphere_bulk_optics(wavelength, r_g, sigma_g, m_r, m_i, *, weights=None, clip
         weights: sphere-network weights; defaults to the packaged ones.
         clip: clip inputs to the training domain (default True).
 
-    Returns
+    Returns:
     -------
         A :class:`BulkOptics` whose fields have the broadcast shape of the
         inputs.
 
-    Notes
+    Notes:
     -----
         All inputs broadcast against one another. Both the analytic Rayleigh
         limit and the network are evaluated unconditionally and selected with
@@ -377,6 +378,7 @@ def sphere_bulk_optics(wavelength, r_g, sigma_g, m_r, m_i, *, weights=None, clip
         ``grad``. ``wavelength`` is not clipped: the network sees it only
         through the size parameter, and it re-enters through the ``1/lambda``
         output factor.
+
     """
     w = weights if weights is not None else default_weights().sphere
 
@@ -412,16 +414,17 @@ def coreshell_bulk_optics(
         weights: core-shell network weights; defaults to the packaged ones.
         clip: clip inputs to the training domain (default True).
 
-    Returns
+    Returns:
     -------
         A :class:`BulkOptics` with the broadcast shape of the inputs.
 
-    Notes
+    Notes:
     -----
         The Rayleigh arm volume-mixes the two indices by ``core_fraction**3``,
         which is also why this function reduces smoothly to the homogeneous
         case as the core vanishes. Upstream documents that the core-shell
         Rayleigh limit is markedly less accurate than the emulator itself.
+
     """
     w = weights if weights is not None else default_weights().coreshell
     if clip:
