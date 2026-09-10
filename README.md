@@ -79,6 +79,8 @@ Every one of these is a real source of coupling bugs.
 - `g` is **scattering-weighted**, and comes from a sigmoid, so it lies in
   (0, 1) — this emulator cannot represent back-scattering.
 - Inputs are clipped to the training box by default (`clip=False` to disable).
+  Both the network and Rayleigh branches use the clipped refractive indices;
+  core and shell indices are clipped individually before Rayleigh mixing.
   `wavelength` is deliberately *not* clipped: the network sees it only through
   the size parameter, and it re-enters via the `1/λ` output factor.
 
@@ -133,6 +135,10 @@ upstream demo documents this. Our tests assert the emulator value tightly and
 the Mie comparison loosely.
 
 ## Weights
+
+Packaged weights are loaded lazily and cached as concrete JAX arrays. The first
+inference can run inside `jax.jit` without an eager warm-up; subsequent eager
+calls and new traces reuse the same weights safely.
 
 `tools/convert_weights.py` derives `src/neuralmie_jax/data/*.npz` from the FKB
 text files vendored in `third_party/NEURALMIE/` (checksums and provenance in
