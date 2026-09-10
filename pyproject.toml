@@ -1,0 +1,63 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "neuralmie-jax"
+version = "0.1.0"
+description = "JAX implementation of the NeuralMie aerosol optics emulator"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "BSD-2-Clause"
+license-files = ["LICENSE", "NOTICE", "third_party/NEURALMIE/LICENSE"]
+authors = [{ name = "Reflective" }]
+keywords = ["aerosol", "optics", "mie-scattering", "jax", "climate", "emulator"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: BSD License",
+    "Topic :: Scientific/Engineering :: Atmospheric Science",
+]
+
+# Runtime floor is deliberately just jax + numpy: the inference module is
+# vendored into jax-gcm, so every dependency added here becomes a dependency
+# there. TensorFlow/Keras must never appear -- weights load from the FKB text
+# format via tools/convert_weights.py.
+dependencies = ["jax>=0.4.35", "numpy>=1.26"]
+
+[project.optional-dependencies]
+# numba only accelerates the NumPy Mie reference; it is never imported by the
+# inference path and the reference runs correctly without it.
+numba = ["numba>=0.59"]
+dev = ["pytest>=8", "pytest-xdist", "ruff==0.15.17"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/neuralmie_jax"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/", "tools/", "third_party/", "README.md", "LICENSE", "NOTICE"]
+
+[tool.pytest.ini_options]
+# *_test.py matches jax-gcm's convention so the co-located tests vendor too.
+testpaths = ["src/neuralmie_jax"]
+python_files = ["*_test.py"]
+markers = ["slow: excluded by default (deselect with -m 'not slow')"]
+addopts = "--strict-markers"
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tools"]
+
+[tool.ruff.lint]
+extend-select = ["D", "I", "UP", "B", "NPY", "RUF"]
+ignore = ["D100", "D104", "D203", "D213", "D205", "D400", "D415", "D417"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "numpy"
+
+[tool.ruff.lint.per-file-ignores]
+"*_test.py" = ["D101", "D102", "D103", "SLF001"]
+# tamie.py is a line-by-line transcription of upstream TAMie.py so it stays
+# diffable against the reference. Its functions are documented at module
+# level instead; adding per-function docstrings would break that property.
+"src/neuralmie_jax/reference/tamie.py" = ["D103"]
