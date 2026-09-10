@@ -11,7 +11,9 @@ in neuralmie-jax. Keep the public API and in-domain numerical behavior.
 - [x] Review the diff, update the README, and run lint, the full test suite
   (including published golden cases and accuracy tests), and weight conversion.
   Verify: no reference tolerances or weight arrays change.
-- [ ] Commit and open a PR linked to #1 and #2; inspect CI results.
+- [x] Commit and open a PR linked to #1 and #2; inspect CI status.
+  Delivery: [PR #3](https://github.com/reflective-org/neuralmie-jax/pull/3).
+  Its Checks tab tracks the lint, Python-version matrix, and weight round trip.
 
 The clipping regressions also reproduced cancellation in the straight-through
 expression: a negative imaginary index could clip to zero instead of 1e-8.
