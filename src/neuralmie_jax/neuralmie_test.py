@@ -59,6 +59,37 @@ class WeightsTest(unittest.TestCase):
     def test_memoised(self):
         self.assertIs(nm.default_weights(), nm.default_weights())
 
+    def test_first_use_under_jit_keeps_cache_reusable(self):
+        cases = (
+            (nm.sphere_bulk_optics, G.SPHERE[0][0]),
+            (nm.coreshell_bulk_optics, G.CORESHELL[0][0]),
+        )
+        for fn, args in cases:
+            with self.subTest(network=fn.__name__):
+                expected = fn(*args)
+                nm.default_weights.cache_clear()
+                try:
+                    # A fresh wrapper forces a trace even if another test has
+                    # already compiled this public function at the same shape.
+                    def infer(*values, fn=fn):
+                        return fn(*values)
+
+                    compiled = jax.jit(infer)
+                    with jax.checking_leaks():
+                        first = compiled(*args)
+                    eager = fn(*args)
+                    batch = compiled(*[jnp.full((2,), a) for a in args])
+                    for want, a, b, c in zip(expected, first, eager, batch, strict=True):
+                        np.testing.assert_allclose(a, want, rtol=GOLDEN_RTOL)
+                        np.testing.assert_allclose(b, want, rtol=GOLDEN_RTOL)
+                        np.testing.assert_allclose(c, jnp.full((2,), want), rtol=GOLDEN_RTOL)
+                    # The two networks share one cache: the other network's
+                    # weights must also be usable after this first trace.
+                    other, other_args = cases[1] if fn is nm.sphere_bulk_optics else cases[0]
+                    self.assertTrue(bool(jnp.isfinite(other(*other_args).ke_rho)))
+                finally:
+                    nm.default_weights.cache_clear()
+
     def test_rejects_wrong_architecture(self):
         import importlib.resources
         data = importlib.resources.files("neuralmie_jax") / "data"
@@ -271,6 +302,56 @@ class ScalingTest(unittest.TestCase):
             nm.MU_RANGE[1] * 10.0)
         self.assertTrue(bool(jnp.isfinite(grad)))
         self.assertNotEqual(float(grad), 0.0)
+
+
+class RefractiveIndexClippingTest(unittest.TestCase):
+    def test_both_branches_match_explicitly_clipped_indices(self):
+        for wavelength, rayleigh in ((1e-4, True), (5.5e-7, False)):
+            for mr, mi in ((1.0, 0.0), (4.0, 2.0), (1.5, -1.0)):
+                for core in ((), (1.85, .71, 0.0), (1.85, .71, .4), (4.0, 2.0, .4)):
+                    with self.subTest(wavelength=wavelength, index=(mr, mi), core=core):
+                        fn = nm.coreshell_bulk_optics if core else nm.sphere_bulk_optics
+                        args = (wavelength, 1e-8, 1.8, mr, mi, *core)
+                        clipped = list(args)
+                        for i in ((3, 5) if core else (3,)):
+                            clipped[i] = float(np.clip(args[i], *nm.M_R_RANGE))
+                            clipped[i + 1] = float(np.clip(args[i + 1], *nm.M_I_RANGE))
+                        expected = fn(*clipped, clip=False)
+                        got = fn(*args)
+                        self.assertEqual(bool(got.rayleigh), rayleigh)
+                        for a, b in zip(got[:3], expected[:3], strict=True):
+                            np.testing.assert_allclose(a, b, rtol=GOLDEN_RTOL)
+
+    def test_clipped_indices_have_finite_boundary_sensitivities(self):
+        for fn, core in ((nm.sphere_bulk_optics, ()),
+                         (nm.coreshell_bulk_optics, (1.85, .71, 0.0)),
+                         (nm.coreshell_bulk_optics, (1.85, .71, .4))):
+            for wavelength in (1e-4, 5.5e-7):
+                with self.subTest(network=fn.__name__, core=core, wavelength=wavelength):
+                    def optics(indices, fn=fn, wavelength=wavelength, core=core):
+                        out = fn(wavelength, 1e-8, 1.8, indices[0], indices[1], *core)
+                        return jnp.stack(out[:3])
+
+                    jacobian = jax.jit(jax.jacrev(optics))
+                    outside = jacobian(jnp.array([1.0, 0.0]))
+                    boundary = jacobian(jnp.array([1.1, 1e-8]))
+                    self.assertTrue(bool(jnp.all(jnp.isfinite(outside))))
+                    np.testing.assert_allclose(outside, boundary, rtol=GOLDEN_RTOL)
+                    self.assertGreater(float(jnp.max(jnp.abs(outside))), 0.0)
+
+    def test_clip_false_preserves_unclipped_rayleigh_indices(self):
+        for fn, core in ((nm.sphere_bulk_optics, ()),
+                         (nm.coreshell_bulk_optics, (1.85, .71, .4))):
+            args = (1e-4, 1e-8, 1.8, 1.0, .005, *core)
+            mr, mi = args[3:5]
+            if core:
+                f3 = core[2]**3
+                mr = core[0] * f3 + mr * (1 - f3)
+                mi = core[1] * f3 + mi * (1 - f3)
+            expected = nm.rayleigh_bulk_optics(*args[:3], mr, mi)
+            out = fn(*args, clip=False)
+            for got, want in zip(out[:3], expected, strict=True):
+                np.testing.assert_allclose(got, want, rtol=GOLDEN_RTOL)
 
 
 class VendorabilityTest(unittest.TestCase):

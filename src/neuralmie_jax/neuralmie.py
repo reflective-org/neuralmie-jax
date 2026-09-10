@@ -174,9 +174,12 @@ def default_weights(dtype=jnp.float32) -> NeuralMieWeights:
 
     Resolved with ``importlib.resources`` relative to this package, so the
     lookup keeps working when this module is vendored under another path.
+    Weights are concrete arrays even when the first call occurs under JIT.
     """
     data = importlib.resources.files(__package__) / "data"
-    with importlib.resources.as_file(data) as d:
+    # The cache outlives any caller's trace. Evaluate these input-independent
+    # constants eagerly so it never retains tracers from first use under JIT.
+    with importlib.resources.as_file(data) as d, jax.ensure_compile_time_eval():
         return NeuralMieWeights(
             sphere=load_mlp_weights(d / "sphere.npz", expect_layers=_SPHERE_LAYERS, dtype=dtype),
             coreshell=load_mlp_weights(d / "coreshell.npz", expect_layers=_CORESHELL_LAYERS, dtype=dtype),
@@ -213,7 +216,9 @@ def _clip_ste(x, lo, hi):
     validated accuracy where it is valid.
     """
     clipped = jnp.clip(x, lo, hi)
-    return jax.lax.stop_gradient(clipped - x) + x
+    # Form an exactly-zero primal correction: subtracting x from a tiny
+    # clipped bound first can erase that bound through float32 cancellation.
+    return jax.lax.stop_gradient(clipped) + (x - jax.lax.stop_gradient(x))
 
 
 def size_parameter(wavelength, radius):
@@ -325,8 +330,6 @@ def _bulk_optics(weights, features, wavelength, r_g, sigma_g, m_r, m_i, ray_args
     if clip:
         r_g = _clip_ste(r_g, *MU_RANGE)
         sigma_g = _clip_ste(sigma_g, *SIGMA_G_RANGE)
-        m_r = _clip_ste(m_r, *M_R_RANGE)
-        m_i = _clip_ste(m_i, *M_I_RANGE)
 
     mu_x = size_parameter(wavelength, r_g)
     mask = is_rayleigh(mu_x, sigma_g)
@@ -381,6 +384,11 @@ def sphere_bulk_optics(wavelength, r_g, sigma_g, m_r, m_i, *, weights=None, clip
 
     """
     w = weights if weights is not None else default_weights().sphere
+    # Both arms must use the same bounded indices, including the discarded
+    # Rayleigh arm whose derivatives still participate in jnp.where.
+    if clip:
+        m_r = _clip_ste(m_r, *M_R_RANGE)
+        m_i = _clip_ste(m_i, *M_I_RANGE)
 
     def features(mu_x, sigma_g, m_r, m_i):
         return jnp.stack(
@@ -428,6 +436,9 @@ def coreshell_bulk_optics(
     """
     w = weights if weights is not None else default_weights().coreshell
     if clip:
+        # Clip each material before constructing the Rayleigh volume mixture.
+        m_r = _clip_ste(m_r, *M_R_RANGE)
+        m_i = _clip_ste(m_i, *M_I_RANGE)
         m_r_core = _clip_ste(m_r_core, *M_R_RANGE)
         m_i_core = _clip_ste(m_i_core, *M_I_RANGE)
         core_fraction = _clip_ste(core_fraction, *CORE_FRACTION_RANGE)
