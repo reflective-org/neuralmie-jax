@@ -206,6 +206,8 @@ def apply_mlp(weights: MLPWeights, x):
 def _clip_ste(x, lo, hi):
     """Clip ``x`` to ``[lo, hi]`` with a straight-through gradient.
 
+    Requires finite ``x``; NaN and infinite inputs produce NaN.
+
     The forward value is clipped, but the derivative is the identity, so an
     out-of-domain input still reports the emulator's sensitivity *at the
     boundary* rather than an exactly-zero gradient. This is the pattern jcm
@@ -323,6 +325,10 @@ class BulkOptics(NamedTuple):
 
 def _bulk_optics(weights, features, wavelength, r_g, sigma_g, m_r, m_i, ray_args, clip):
     """Shared branch logic for both networks.
+
+    ``clip`` here controls only ``r_g`` and ``sigma_g``. When enabled,
+    callers clip the material refractive indices before constructing
+    ``ray_args``, so both branches use the same bounded material inputs.
 
     The evaluation order is the whole safety argument -- see
     :func:`sphere_bulk_optics` for why the ``mu_x`` clamp is mandatory.
