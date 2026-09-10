@@ -1,0 +1,46 @@
+name: CI
+on: [push, pull_request]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install ruff==0.15.17
+      - run: ruff check .
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "${{ matrix.python-version }}" }
+      - run: pip install -e ".[dev]"
+      - run: pytest -q
+
+  weights-roundtrip:
+    # The committed .npz must stay derivable from the upstream .txt. Compares
+    # arrays, not file hashes: np.savez embeds zip mtimes.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - run: pip install -e ".[dev]"
+      - run: |
+          python tools/convert_weights.py --out /tmp/regen
+          python - <<'PY'
+          import numpy as np
+          for name in ("sphere", "coreshell"):
+              a = np.load(f"src/neuralmie_jax/data/{name}.npz", allow_pickle=False)
+              b = np.load(f"/tmp/regen/{name}.npz", allow_pickle=False)
+              assert sorted(a.files) == sorted(b.files), name
+              for k in a.files:
+                  assert np.array_equal(a[k], b[k]), f"{name}:{k}"
+          print("weights round-trip OK")
+          PY
